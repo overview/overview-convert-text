@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 
 import chardet
+import io
+import json
+import os
 import pygments.formatter
 import pygments.lexers
 import pygments.lexers.c_cpp
@@ -12,16 +15,9 @@ import pygments.lexers.jvm
 import pygments.lexers.python
 import pygments.lexers.ruby
 import pygments.lexers.special
-
-import io
-import json
-import os
 from xml.sax.saxutils import escape
 from reportlab.platypus import SimpleDocTemplate
-from reportlab.platypus.flowables import Preformatted
-from reportlab.platypus.paragraph import Paragraph
 from reportlab.platypus.xpreformatted import XPreformatted
-from reportlab.platypus.paraparser import ParaFrag
 from reportlab.lib.styles import ParagraphStyle
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
