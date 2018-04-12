@@ -12,10 +12,8 @@ We guess character set using [chardet](https://github.com/chardet/chardet).
 If the user wants to guarantee a certain character set, the user must encode
 the text as UTF-8: it's the only character set we detect 100% accurately.
 
-We generate the PDF using [prawn](http://prawnpdf.org/api-docs/2.0/). It was
-10x faster for our use case than [ReportLab](https://www.reportlab.com/),
-likely because it lets us simply write text without forcing us into
-ReportLab's "flowables".
+We generate the PDF using [ReportLab](https://www.reportlab.com/). It's the
+fastest, despite its overpowered API.
 
 We generate a thumbnail using `pdftocairo`. We output JPG: it saves ~0.03s.
 
