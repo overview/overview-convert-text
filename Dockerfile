@@ -1,6 +1,7 @@
 FROM alpine:3.7 AS os
 RUN set -x \
   && apk add --update --no-cache \
+    ca-certificates \
     python3 \
     py3-reportlab \
     py3-pygments \
