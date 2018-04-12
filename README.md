@@ -39,11 +39,13 @@ how we built `test/test-1page/0-thumbnail.png`:
 
 1. Wrote `test/test-1page/{input.json,input.blob,0.txt,0.blob,stdout}`
 1. Ran `docker build .`. The end of the output looked like this:
+    ```
     Step 12/13 : RUN [ "/app/test-convert-single-file" ]
      ---> Running in f65521f3a30c
     1..3
     not ok 1 - test-1page
         do-convert-single-file wrote /tmp/test-do-convert-single-file912093989/0-thumbnail.jpg, but we expected it not to exist
     ...
+    ```
 1. `docker cp f65521f3a30c:/tmp/test-do-convert-single-file912093989/0-thumbnail.jpg test/test-1page/`
 1. `docker rm -f f65521f3a30c`
