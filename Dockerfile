@@ -9,7 +9,7 @@ RUN set -x \
     poppler-utils
 
 
-FROM overview/overview-convert-framework:0.0.14 AS framework
+FROM overview/overview-convert-framework:0.0.15 AS framework
 # multi-stage build
 
 
