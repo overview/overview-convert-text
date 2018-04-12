@@ -303,9 +303,3 @@ def main(input_json_text):
 if __name__ == '__main__':
     import sys
     main(sys.argv[1])
-
-    #import cProfile
-    #cProfile.run('main()', 'restats')
-    #import pstats
-    #p = pstats.Stats('restats')
-    #p.sort_stats('cumulative').print_stats(100)
