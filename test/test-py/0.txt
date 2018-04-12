@@ -1,0 +1,226 @@
+#!/usr/bin/env python3
+
+import chardet
+import pygments.formatter
+import io
+import json
+from xml.sax.saxutils import escape
+from reportlab.platypus import SimpleDocTemplate
+from reportlab.platypus.paragraph import Paragraph
+
+class ReportLabFormatter(pygments.formatter.Formatter):
+    def __init__(self, **kwargs):
+        pygments.formatter.Formatter.__init__(self, **kwargs)
+
+        self._init_styles()
+
+    def _init_styles(self):
+        # https://github.com/shkumagai/pygments-style-solarized/blob/develop/pygments_style_solarized/light.py
+        # minus italics and bold
+        from pygments.token import Keyword, Name, Comment, String, Error, Text, Number, Operator, Generic, Whitespace, Other, Literal, Punctuation
+
+        self._styles = {
+            Text:                   '#657b83',             # base00 ; class: ''
+            Whitespace:             '#fdf6e3',             # base3  ; class: 'w'
+            Error:                  '#dc322f',             # red    ; class: 'err'
+            Other:                  '#657b83',             # base00 ; class: 'x'
+
+            Comment:                '#93a1a1',             # base1  ; class: 'c'
+            Comment.Multiline:      '#93a1a1',             # base1  ; class: 'cm'
+            Comment.Preproc:        '#93a1a1',             # base1  ; class: 'cp'
+            Comment.Single:         '#93a1a1',             # base1  ; class: 'c1'
+            Comment.Special:        '#93a1a1',             # base1  ; class: 'cs'
+
+            Keyword:                '#859900',             # green  ; class: 'k'
+            Keyword.Constant:       '#859900',             # green  ; class: 'kc'
+            Keyword.Declaration:    '#859900',             # green  ; class: 'kd'
+            Keyword.Namespace:      '#cb4b16',             # orange ; class: 'kn'
+            Keyword.Pseudo:         '#cb4b16',             # orange ; class: 'kp'
+            Keyword.Reserved:       '#859900',             # green  ; class: 'kr'
+            Keyword.Type:           '#859900',             # green  ; class: 'kt'
+
+            Operator:               '#657b83',             # base00 ; class: 'o'
+            Operator.Word:          '#859900',             # green  ; class: 'ow'
+
+            Name:                   '#586e75',             # base01 ; class: 'n'
+            Name.Attribute:         '#657b83',             # base00 ; class: 'na'
+            Name.Builtin:           '#268bd2',             # blue   ; class: 'nb'
+            Name.Builtin.Pseudo:    '#268bd2',             # blue   ; class: 'nb'
+            Name.Class:             '#268bd2',             # blue   ; class: 'nc'
+            Name.Constant:          '#b58900',             # yellow ; class: 'no'
+            Name.Decorator:         '#cb4b16',             # orange ; class: 'nd'
+            Name.Entity:            '#cb4b16',             # orange ; class: 'ni'
+            Name.Exception:         '#cb4b16',             # orange ; class: 'ne'
+            Name.Function:          '#268bd2',             # blue   ; class: 'nf'
+            Name.Property:          '#268bd2',             # blue   ; class: 'py'
+            Name.Label:             '#657b83',             # base00 ; class: 'nc'
+            Name.Namespace:         '#b58900',             # yellow ; class: 'nn'
+            Name.Other:             '#657b83',             # base00 ; class: 'nx'
+            Name.Tag:               '#859900',             # green  ; class: 'nt'
+            Name.Variable:          '#cb4b16',             # orange ; class: 'nv'
+            Name.Variable.Class:    '#268bd2',             # blue   ; class: 'vc'
+            Name.Variable.Global:   '#268bd2',             # blue   ; class: 'vg'
+            Name.Variable.Instance: '#268bd2',             # blue   ; class: 'vi'
+
+            Number:                 '#2aa198',             # cyan   ; class: 'm'
+            Number.Float:           '#2aa198',             # cyan   ; class: 'mf'
+            Number.Hex:             '#2aa198',             # cyan   ; class: 'mh'
+            Number.Integer:         '#2aa198',             # cyan   ; class: 'mi'
+            Number.Integer.Long:    '#2aa198',             # cyan   ; class: 'il'
+            Number.Oct:             '#2aa198',             # cyan   ; class: 'mo'
+
+            Literal:                '#657b83',             # base00 ; class: 'l'
+            Literal.Date:           '#657b83',             # base00 ; class: 'ld'
+
+            Punctuation:            '#657b83',             # base00 ; class: 'p'
+
+            String:                 '#2aa198',             # cyan   ; class: 's'
+            String.Backtick:        '#2aa198',             # cyan   ; class: 'sb'
+            String.Char:            '#2aa198',             # cyan   ; class: 'sc'
+            String.Doc:             '#2aa198',             # cyan   ; class: 'sd'
+            String.Double:          '#2aa198',             # cyan   ; class: 's2'
+            String.Escape:          '#cb4b16',             # orange ; class: 'se'
+            String.Heredoc:         '#2aa198',             # cyan   ; class: 'sh'
+            String.Interpol:        '#cb4b16',             # orange ; class: 'si'
+            String.Other:           '#2aa198',             # cyan   ; class: 'sx'
+            String.Regex:           '#2aa198',             # cyan   ; class: 'sr'
+            String.Single:          '#2aa198',             # cyan   ; class: 's1'
+            String.Symbol:          '#2aa198',             # cyan   ; class: 'ss'
+
+            Generic:                '#657b83',             # base00 ; class: 'g'
+            Generic.Deleted:        '#657b83',             # base00 ; class: 'gd'
+            Generic.Emph:           '#657b83',             # base00 ; class: 'ge'
+            Generic.Error:          '#657b83',             # base00 ; class: 'gr'
+            Generic.Heading:        '#657b83',             # base00 ; class: 'gh'
+            Generic.Inserted:       '#657b83',             # base00 ; class: 'gi'
+            Generic.Output:         '#657b83',             # base00 ; class: 'go'
+            Generic.Prompt:         '#657b83',             # base00 ; class: 'gp'
+            Generic.Strong:         '#657b83',             # base00 ; class: 'gs'
+            Generic.Subheading:     '#657b83',             # base00 ; class: 'gu'
+            Generic.Traceback:      '#657b83',             # base00 ; class: 'gt'
+        }
+
+    def _color_tokensource(self, tokensource):
+        """Enumerate _colored_ tokens, instead of _typed_ tokens.
+        """
+        lastval = ''
+        lastcolor = None
+
+        for ttype, token in tokensource:
+            while ttype not in self._styles:
+                ttype = ttype.parent
+            color = self._styles[ttype]
+
+            if color == lastcolor:
+                lastval += token
+            else:
+                yield (color, lastval)
+                lastval = token
+                lastcolor = color
+
+        if lastval:
+            yield (color, lastval)
+
+    def _add_token_to_para(self, para, ttype, token):
+        """Add `<font color="#abcdef">formatted</font>` token to the list, para.
+        """
+        para.append(
+            '<font color="{}">{}</font>'.format(color, escape(token))
+        )
+
+    def _advance_one_line(self, flowables, para):
+        """Add a Paragraph with `para`'s contents to the `flowables` list, then return `[]`
+        """
+        flowable = Paragraph(''.join(para))
+        flowables.append(flowable)
+        return []
+
+    def format(self, tokensource, outfile):
+        assert outfile is None, "do not pass outfile: instead, access self.flowables"
+
+        flowables = []
+        para = []
+
+        for color, value in self._color_tokensource(tokensource):
+            lines = value.split('\n')
+            for line in lines[:-1]:
+                self._add_token_to_para(para, color, line)
+                para = self._advance_one_line(flowables, para)
+            self._add_token_to_para(para, color, lines[-1])
+
+        para = self._advance_one_line(flowables, para)
+
+        self.flowables = flowables
+
+
+def read_input_blob():
+    """Return the bytes in input.blob
+    """
+    with open('input.blob', 'rb') as f:
+        return f.read()
+
+
+def detect_bytes_charset(b):
+    """Reads as many bytes of b as necessary to determine charset
+    """
+    detector = UniversalDetector()
+
+    bio = io.BytesIO(b)
+    barray = bytearray('\0' * 1024)
+    while True:
+        n_read = bio.read(barray)
+        if n_read == 0:
+            break
+
+        detector.feed(barray[0:n_read])
+        if detector.done:
+            break
+
+    detector.close()
+    return detector.result.get('encoding') or 'utf-8'
+
+
+def bytes_to_str(b):
+    """Converts bytes to text by auto-detecting encoding.
+    """
+    encoding = detect_bytes_charset(b)
+    return b.decode(encoding, 'replace')
+
+
+def write_pdf(flowables):
+    doc = SimpleDocTemplate('0.blob')
+    doc.build(flowables)
+
+
+def calculate_text_flowables(text, filename):
+    lexer = pygments.lexers.guess_lexer_for_filename(text, filename)
+    formatter = ReportLabFormatter()
+    flowables = pygments.highlight(text, lexer, formatter)
+
+
+def write_text(text):
+    with open('0.txt', 'w') as f:
+        return f.write(text)
+
+
+def main():
+    text = bytes_to_str(read_input_blob())
+    input_json = json.load('input.json')
+    filename = input_json['filename']
+
+    flowables = calculate_text_flowables(text, filename)
+
+    write_pdf(flowables)
+    write_text(text)
+    with open('0.json', 'w') as f:
+        json.dump({
+            'filename': filename,
+            'contentType': 'application/pdf',
+            'languageCode': input_json['languageCode'],
+            'wantOcr': False,
+            'wantSplitByPage': input_json['wantSplitByPage'],
+            'metadata': input_json['metadata']
+        }, f)
+
+if __name__ == '__main__':
+    main()

@@ -1,0 +1,315 @@
+#!/usr/bin/env python3
+
+import chardet
+import pygments.formatter
+import pygments.lexers
+import pygments.lexers.c_cpp
+import pygments.lexers.configs
+import pygments.lexers.data
+import pygments.lexers.diff
+import pygments.lexers.javascript
+import pygments.lexers.jvm
+import pygments.lexers.python
+import pygments.lexers.ruby
+import pygments.lexers.special
+
+import io
+import json
+import os
+from xml.sax.saxutils import escape
+from reportlab.platypus import SimpleDocTemplate
+from reportlab.platypus.flowables import Preformatted
+from reportlab.platypus.paragraph import Paragraph
+from reportlab.platypus.xpreformatted import XPreformatted
+from reportlab.platypus.paraparser import ParaFrag
+from reportlab.lib.styles import ParagraphStyle
+from reportlab.pdfbase import pdfmetrics
+from reportlab.pdfbase.ttfonts import TTFont
+
+# ReportLab only supports 65,535 glyphs.
+#
+# TODO consider using an alternate library
+pdfmetrics.registerFont(TTFont('NotoSansMono', '/app/NotoSansMono-Regular.ttf'))
+
+class ReportLabFormatter(pygments.formatter.Formatter):
+    def __init__(self, **kwargs):
+        pygments.formatter.Formatter.__init__(self, **kwargs)
+        self._init_styles()
+        self._rl_style = ParagraphStyle(
+            name='Default',
+            fontName='NotoSansMono',
+            fontSize=9,
+            leading=13,
+            spaceBefore=0,
+            spaceAfter=0
+        )
+
+    def _init_styles(self):
+        # https://github.com/shkumagai/pygments-style-solarized/blob/develop/pygments_style_solarized/light.py
+        # minus italics and bold
+        from pygments.token import Keyword, Name, Comment, String, Error, Text, Number, Operator, Generic, Whitespace, Other, Literal, Punctuation
+
+        self._styles = {
+            Text:                   'HexColor(0x657b83)', # base00 ; class: ''
+            Whitespace:             'HexColor(0xfdf6e3)', # base3  ; class: 'w'
+            Error:                  'HexColor(0xdc322f)', # red    ; class: 'err'
+            Other:                  'HexColor(0x657b83)', # base00 ; class: 'x'
+
+            Comment:                'HexColor(0x93a1a1)', # base1  ; class: 'c'
+            Comment.Multiline:      'HexColor(0x93a1a1)', # base1  ; class: 'cm'
+            Comment.Preproc:        'HexColor(0x93a1a1)', # base1  ; class: 'cp'
+            Comment.Single:         'HexColor(0x93a1a1)', # base1  ; class: 'c1'
+            Comment.Special:        'HexColor(0x93a1a1)', # base1  ; class: 'cs'
+
+            Keyword:                'HexColor(0x859900)', # green  ; class: 'k'
+            Keyword.Constant:       'HexColor(0x859900)', # green  ; class: 'kc'
+            Keyword.Declaration:    'HexColor(0x859900)', # green  ; class: 'kd'
+            Keyword.Namespace:      'HexColor(0xcb4b16)', # orange ; class: 'kn'
+            Keyword.Pseudo:         'HexColor(0xcb4b16)', # orange ; class: 'kp'
+            Keyword.Reserved:       'HexColor(0x859900)', # green  ; class: 'kr'
+            Keyword.Type:           'HexColor(0x859900)', # green  ; class: 'kt'
+
+            Operator:               'HexColor(0x657b83)', # base00 ; class: 'o'
+            Operator.Word:          'HexColor(0x859900)', # green  ; class: 'ow'
+
+            Name:                   'HexColor(0x586e75)', # base01 ; class: 'n'
+            Name.Attribute:         'HexColor(0x657b83)', # base00 ; class: 'na'
+            Name.Builtin:           'HexColor(0x268bd2)', # blue   ; class: 'nb'
+            Name.Builtin.Pseudo:    'HexColor(0x268bd2)', # blue   ; class: 'nb'
+            Name.Class:             'HexColor(0x268bd2)', # blue   ; class: 'nc'
+            Name.Constant:          'HexColor(0xb58900)', # yellow ; class: 'no'
+            Name.Decorator:         'HexColor(0xcb4b16)', # orange ; class: 'nd'
+            Name.Entity:            'HexColor(0xcb4b16)', # orange ; class: 'ni'
+            Name.Exception:         'HexColor(0xcb4b16)', # orange ; class: 'ne'
+            Name.Function:          'HexColor(0x268bd2)', # blue   ; class: 'nf'
+            Name.Property:          'HexColor(0x268bd2)', # blue   ; class: 'py'
+            Name.Label:             'HexColor(0x657b83)', # base00 ; class: 'nc'
+            Name.Namespace:         'HexColor(0xb58900)', # yellow ; class: 'nn'
+            Name.Other:             'HexColor(0x657b83)', # base00 ; class: 'nx'
+            Name.Tag:               'HexColor(0x859900)', # green  ; class: 'nt'
+            Name.Variable:          'HexColor(0xcb4b16)', # orange ; class: 'nv'
+            Name.Variable.Class:    'HexColor(0x268bd2)', # blue   ; class: 'vc'
+            Name.Variable.Global:   'HexColor(0x268bd2)', # blue   ; class: 'vg'
+            Name.Variable.Instance: 'HexColor(0x268bd2)', # blue   ; class: 'vi'
+
+            Number:                 'HexColor(0x2aa198)', # cyan   ; class: 'm'
+            Number.Float:           'HexColor(0x2aa198)', # cyan   ; class: 'mf'
+            Number.Hex:             'HexColor(0x2aa198)', # cyan   ; class: 'mh'
+            Number.Integer:         'HexColor(0x2aa198)', # cyan   ; class: 'mi'
+            Number.Integer.Long:    'HexColor(0x2aa198)', # cyan   ; class: 'il'
+            Number.Oct:             'HexColor(0x2aa198)', # cyan   ; class: 'mo'
+
+            Literal:                'HexColor(0x657b83)', # base00 ; class: 'l'
+            Literal.Date:           'HexColor(0x657b83)', # base00 ; class: 'ld'
+
+            Punctuation:            'HexColor(0x657b83)', # base00 ; class: 'p'
+
+            String:                 'HexColor(0x2aa198)', # cyan   ; class: 's'
+            String.Backtick:        'HexColor(0x2aa198)', # cyan   ; class: 'sb'
+            String.Char:            'HexColor(0x2aa198)', # cyan   ; class: 'sc'
+            String.Doc:             'HexColor(0x2aa198)', # cyan   ; class: 'sd'
+            String.Double:          'HexColor(0x2aa198)', # cyan   ; class: 's2'
+            String.Escape:          'HexColor(0xcb4b16)', # orange ; class: 'se'
+            String.Heredoc:         'HexColor(0x2aa198)', # cyan   ; class: 'sh'
+            String.Interpol:        'HexColor(0xcb4b16)', # orange ; class: 'si'
+            String.Other:           'HexColor(0x2aa198)', # cyan   ; class: 'sx'
+            String.Regex:           'HexColor(0x2aa198)', # cyan   ; class: 'sr'
+            String.Single:          'HexColor(0x2aa198)', # cyan   ; class: 's1'
+            String.Symbol:          'HexColor(0x2aa198)', # cyan   ; class: 'ss'
+
+            Generic:                'HexColor(0x657b83)', # base00 ; class: 'g'
+            Generic.Deleted:        'HexColor(0x657b83)', # base00 ; class: 'gd'
+            Generic.Emph:           'HexColor(0x657b83)', # base00 ; class: 'ge'
+            Generic.Error:          'HexColor(0x657b83)', # base00 ; class: 'gr'
+            Generic.Heading:        'HexColor(0x657b83)', # base00 ; class: 'gh'
+            Generic.Inserted:       'HexColor(0x657b83)', # base00 ; class: 'gi'
+            Generic.Output:         'HexColor(0x657b83)', # base00 ; class: 'go'
+            Generic.Prompt:         'HexColor(0x657b83)', # base00 ; class: 'gp'
+            Generic.Strong:         'HexColor(0x657b83)', # base00 ; class: 'gs'
+            Generic.Subheading:     'HexColor(0x657b83)', # base00 ; class: 'gu'
+            Generic.Traceback:      'HexColor(0x657b83)', # base00 ; class: 'gt'
+        }
+
+    def _color_tokensource(self, tokensource):
+        """Enumerate _colored_ tokens, instead of _typed_ tokens.
+        """
+        lastval = ''
+        lastcolor = None
+
+        for ttype, token in tokensource:
+            while ttype not in self._styles:
+                ttype = ttype.parent
+            color = self._styles[ttype]
+
+            if token.isspace() or color == lastcolor:
+                lastval += token
+            else:
+                yield (color, lastval)
+                lastval = token
+                lastcolor = color
+
+        if lastval:
+            yield (color, lastval)
+
+    def format(self, tokensource, outfile):
+        """Populates self.flowables with ReportLab-ready Flowables
+
+        Does not write anything to outfile.
+        """
+
+        contents = []
+        frags = []
+        col = 0
+        max_col = 94
+
+        for color, value in self._color_tokensource(tokensource):
+            contents.append('<font color="%s">' % color)
+
+            lines = value.splitlines(True)
+
+            for line in lines:
+                while col + len(line) > max_col:
+                    part = line[0 : max_col - col ]
+                    contents.append(escape(part))
+                    line = line[max_col - col :]
+                    contents.append('\n')
+                    col = 0
+
+                contents.append(escape(line))
+                if line.endswith('\n'):
+                    col = 0
+                else:
+                    col = col + len(line)
+
+            contents.append('</font>')
+
+        self.flowables = [ XPreformatted(''.join(contents), self._rl_style) ]
+
+
+def read_input_blob():
+    """Return the bytes in input.blob
+    """
+    with open('input.blob', 'rb') as f:
+        return f.read()
+
+
+def detect_bytes_charset(b):
+    """Reads as many bytes of b as necessary to determine charset
+    """
+    detector = chardet.UniversalDetector()
+
+    bio = io.BytesIO(b)
+    while True:
+        barray = bio.read(1024)
+        if len(barray) == 0:
+            break
+
+        detector.feed(barray)
+        if detector.done:
+            break
+
+    detector.close()
+    return detector.result.get('encoding') or 'utf-8'
+
+
+def bytes_to_str(b):
+    """Converts bytes to text by auto-detecting encoding.
+    """
+    encoding = detect_bytes_charset(b)
+    return b.decode(encoding, 'replace')
+
+
+def write_pdf(filename, flowables):
+    doc = SimpleDocTemplate(
+        '0.blob',
+        title=filename,
+        leftMargin=36.0,
+        rightMargin=36.0,
+        topMargin=36.0,
+        bottomMargin=36.0
+    )
+    doc.build(flowables)
+
+
+def fast_get_lexer_for_filename(filename):
+    """Pick a lexer, more quickly than Pygments.
+
+    It's faster because we support fewer file types.
+    """
+    ext = filename.split('.')[-1]
+
+    # We support at least the programming languages used by Overview itself
+    return {
+        'py':         pygments.lexers.python.PythonLexer,
+        'py3':        pygments.lexers.python.PythonLexer,
+        'rb':         pygments.lexers.ruby.RubyLexer,
+        'js':         pygments.lexers.javascript.JavascriptLexer,
+        'coffee':     pygments.lexers.javascript.CoffeeScriptLexer,
+        'ini':        pygments.lexers.configs.IniLexer,
+        'Dockerfile': pygments.lexers.configs.DockerLexer,
+        'yaml':       pygments.lexers.data.YamlLexer,
+        'yml':        pygments.lexers.data.YamlLexer,
+        'diff':       pygments.lexers.diff.DiffLexer,
+        'patch':      pygments.lexers.diff.DiffLexer,
+        'json':       pygments.lexers.data.JsonLexer,
+        'c':          pygments.lexers.c_cpp.CLexer,
+        'h':          pygments.lexers.c_cpp.CLexer,
+        'cpp':        pygments.lexers.c_cpp.CppLexer,
+        'hpp':        pygments.lexers.c_cpp.CppLexer,
+        'hh':         pygments.lexers.c_cpp.CppLexer,
+        'cc':         pygments.lexers.c_cpp.CppLexer,
+        'cxx':        pygments.lexers.c_cpp.CppLexer,
+        'hxx':        pygments.lexers.c_cpp.CppLexer,
+    }.get(ext, pygments.lexers.special.TextLexer)()
+
+
+def calculate_text_flowables(text, filename):
+    lexer = fast_get_lexer_for_filename(filename)
+    formatter = ReportLabFormatter()
+    pygments.highlight(text, lexer, formatter)
+    return formatter.flowables
+
+
+def write_text(text):
+    with open('0.txt', 'w') as f:
+        return f.write(text)
+
+
+def main(input_json_text):
+    text = bytes_to_str(read_input_blob())
+    input_json = json.loads(input_json_text)
+    filename = input_json['filename']
+    flowables = calculate_text_flowables(text, filename)
+
+    write_pdf(filename, flowables)
+    write_text(text)
+    with open('0.json', 'w') as f:
+        json.dump({
+            'filename': filename,
+            'contentType': 'application/pdf',
+            'languageCode': input_json['languageCode'],
+            'wantOcr': False,
+            'wantSplitByPage': input_json['wantSplitByPage'],
+            'metadata': input_json['metadata']
+        }, f)
+
+    # exec() so signals get sent to pdftocairo
+    os.execl(
+      '/usr/bin/pdftocairo',
+      '/usr/bin/pdftocairo',
+      '-jpeg',
+      '-singlefile',
+      '-scale-to', '700',
+      '0.blob',
+      '0-thumbnail'
+    )
+
+if __name__ == '__main__':
+    import sys
+    main(sys.argv[1])
+
+    #import cProfile
+    #cProfile.run('main()', 'restats')
+    #import pstats
+    #p = pstats.Stats('restats')
+    #p.sort_stats('cumulative').print_stats(100)
