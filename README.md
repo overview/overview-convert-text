@@ -15,6 +15,9 @@ the text as UTF-8: it's the only character set we detect 100% accurately.
 We generate the PDF using [ReportLab](https://www.reportlab.com/). It's the
 fastest, despite its overpowered API.
 
+We syntax-highlight using Pygments because ... well ... what a fun feature,
+right? We trust the `contentType` Overview sends us.
+
 We generate a thumbnail using `pdftocairo`. We output JPG: it saves ~0.03s.
 
 Right now, we only embed Noto Sans Mono. The annoying reality is that TTF

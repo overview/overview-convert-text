@@ -7,14 +7,18 @@ import os
 import pygments.formatter
 import pygments.lexers
 import pygments.lexers.c_cpp
-import pygments.lexers.configs
+import pygments.lexers.css
 import pygments.lexers.data
 import pygments.lexers.diff
+import pygments.lexers.go
 import pygments.lexers.javascript
 import pygments.lexers.jvm
 import pygments.lexers.python
 import pygments.lexers.ruby
+import pygments.lexers.rust
+import pygments.lexers.shell
 import pygments.lexers.special
+import pygments.lexers.sql
 from xml.sax.saxutils import escape
 from reportlab.platypus import SimpleDocTemplate
 from reportlab.platypus.xpreformatted import XPreformatted
@@ -227,40 +231,39 @@ def write_pdf(filename, flowables):
     doc.build(flowables)
 
 
-def fast_get_lexer_for_filename(filename):
-    """Pick a lexer, more quickly than Pygments.
+def get_lexer_for_content_type(content_type):
+    """Pick a lexer.
 
-    It's faster because we support fewer file types.
+    It's quicker than pygments' get_lexer_for_filename() because it supports
+    far fewer file types -- meaning less Python code to load.
     """
-    ext = filename.split('.')[-1]
-
     # We support at least the programming languages used by Overview itself
     return {
-        'py':         pygments.lexers.python.PythonLexer,
-        'py3':        pygments.lexers.python.PythonLexer,
-        'rb':         pygments.lexers.ruby.RubyLexer,
-        'js':         pygments.lexers.javascript.JavascriptLexer,
-        'coffee':     pygments.lexers.javascript.CoffeeScriptLexer,
-        'ini':        pygments.lexers.configs.IniLexer,
-        'Dockerfile': pygments.lexers.configs.DockerLexer,
-        'yaml':       pygments.lexers.data.YamlLexer,
-        'yml':        pygments.lexers.data.YamlLexer,
-        'diff':       pygments.lexers.diff.DiffLexer,
-        'patch':      pygments.lexers.diff.DiffLexer,
-        'json':       pygments.lexers.data.JsonLexer,
-        'c':          pygments.lexers.c_cpp.CLexer,
-        'h':          pygments.lexers.c_cpp.CLexer,
-        'cpp':        pygments.lexers.c_cpp.CppLexer,
-        'hpp':        pygments.lexers.c_cpp.CppLexer,
-        'hh':         pygments.lexers.c_cpp.CppLexer,
-        'cc':         pygments.lexers.c_cpp.CppLexer,
-        'cxx':        pygments.lexers.c_cpp.CppLexer,
-        'hxx':        pygments.lexers.c_cpp.CppLexer,
-    }.get(ext, pygments.lexers.special.TextLexer)()
+        'application/javascript':       pygments.lexers.javascript.JavascriptLexer,
+        'application/json':             pygments.lexers.data.JsonLexer,
+        'application/sql':              pygments.lexers.sql.SqlLexer,
+        'application/vnd.coffeescript': pygments.lexers.javascript.CoffeeScriptLexer,
+        'application/x-ruby':           pygments.lexers.ruby.RubyLexer,
+        'application/x-shellscript':    pygments.lexers.shell.BashLexer,
+        'application/x-yaml':           pygments.lexers.data.YamlLexer,
+        'text/css':                     pygments.lexers.css.CssLexer,
+        'text/rust':                    pygments.lexers.rust.RustLexer,
+        'text/x-chdr':                  pygments.lexers.c_cpp.CLexer,
+        'text/x-c++hdr':                pygments.lexers.c_cpp.CppLexer,
+        'text/x-csrc':                  pygments.lexers.c_cpp.CLexer,
+        'text/x-c++src':                pygments.lexers.c_cpp.CppLexer,
+        'text/x-gosrc':                 pygments.lexers.go.GoLexer,
+        'text/x-java':                  pygments.lexers.jvm.JavaLexer,
+        'text/x-kotlin':                pygments.lexers.jvm.KotlinLexer,
+        'text/x-patch':                 pygments.lexers.diff.DiffLexer,
+        'text/x-python':                pygments.lexers.python.PythonLexer,
+        'text/x-scala':                 pygments.lexers.jvm.ScalaLexer,
+        'text/x-scss':                  pygments.lexers.css.ScssLexer,
+    }.get(content_type, pygments.lexers.special.TextLexer)()
 
 
-def calculate_text_flowables(text, filename):
-    lexer = fast_get_lexer_for_filename(filename)
+def calculate_text_flowables(text, content_type):
+    lexer = get_lexer_for_content_type(content_type)
     formatter = ReportLabFormatter()
     pygments.highlight(text, lexer, formatter)
     return formatter.flowables
@@ -275,7 +278,9 @@ def main(input_json_text):
     text = bytes_to_str(read_input_blob())
     input_json = json.loads(input_json_text)
     filename = input_json['filename']
-    flowables = calculate_text_flowables(text, filename)
+    content_type = input_json['contentType']
+
+    flowables = calculate_text_flowables(text, content_type)
 
     write_pdf(filename, flowables)
     write_text(text)
